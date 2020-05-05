@@ -52,3 +52,56 @@ func (s *SuiteBase) TestIndexDocument(c *gc.C) {
 	err = s.idx.Index(doc)
 	c.Assert(err, gc.IsNil)
 }
+
+//TestFindByID verifies the document lookup logic
+func (s *SuiteBase) TestFindByID(c *gc.C) {
+	doc := &index.Document{
+		LinkID:    uuid.New(),
+		Content:   "hello",
+		IndexedAt: time.Now(),
+		PageRank:  1,
+		Title:     "Title",
+		URL:       "http://example.com",
+	}
+	err := s.idx.Index(doc)
+	c.Assert(err, gc.IsNil)
+
+	got, err := s.idx.FindByID(doc.LinkID)
+	c.Assert(err, gc.IsNil)
+	c.Assert(got, gc.DeepEquals, doc, gc.Commentf("document returned from FindByID does not match inserted document"))
+
+	got, err = s.idx.FindByID(uuid.New())
+	c.Assert(got, gc.IsNil)
+	c.Assert(xerrors.Is(err, index.ErrNotFound), gc.Equals, true)
+}
+
+//TestUpdateScore verifies that a document's pagerank is changed correctly
+func (s *SuiteBase) TestUpdateScore(c *gc.C) {
+	doc := &index.Document{
+		LinkID:   uuid.New(),
+		PageRank: 1,
+	}
+	err := s.idx.Index(doc)
+	c.Assert(err, gc.IsNil)
+
+	err = s.idx.UpdateScore(doc.LinkID, float64(5))
+	c.Assert(err, gc.IsNil)
+	got, err := s.idx.FindByID(doc.LinkID)
+	c.Assert(err, gc.IsNil)
+	c.Assert(got.PageRank, gc.Equals, float64(5), gc.Commentf("PageRank score not updated"))
+}
+
+//TestUpdateScoreUnknownDocument verifies that PageRank score is updated on documents that aren't indexed
+func (s *SuiteBase) TestUpdateScoreUnknownDocument(c *gc.C) {
+	id := uuid.New()
+	err := s.idx.UpdateScore(id, float64(10))
+	c.Assert(err, gc.IsNil)
+	found, err := s.idx.FindByID(id)
+	c.Assert(err, gc.IsNil)
+
+	c.Assert(found.URL, gc.Equals, "")
+	c.Assert(found.Title, gc.Equals, "")
+	c.Assert(found.Content, gc.Equals, "")
+	c.Assert(found.PageRank, gc.Equals, float64(10))
+
+}

@@ -76,16 +76,50 @@ func (i *InMemoryBleveIndexer) Index(doc *index.Document) error {
 	return nil
 }
 
-func (i *InMemoryBleveIndexer) FindById(linkID uuid.UUID) (*index.Document, error) {
-	return nil, nil
+/*
+FindByID converts the input uuid to a string and delegates document lookup to the unexported findByID method.
+This is because we need to provide a string-based ID for bleve to index a document, which bleve returns to us
+when the document is matched by a search query.  By providing a findByID method that accepts linkID as a string, we
+can reuse the document lookup code when iterating search results
+*/
+func (i *InMemoryBleveIndexer) FindByID(linkID uuid.UUID) (*index.Document, error) {
+	return i.findByID(linkID.String())
 }
 
 func (i *InMemoryBleveIndexer) Search(query index.Query) (index.Iterator, error) {
 	return nil, nil
 }
 
+/*
+UpdateScore will update pagerank score of the document with linkID in place, after acquiring write lock.
+*/
 func (i *InMemoryBleveIndexer) UpdateScore(linkID uuid.UUID, score float64) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	key := linkID.String()
+	if doc, found := i.docs[key]; found {
+		//any updates to a searchable attribute requires a reindex operation.
+		//PageRank of document is updated in-place since we have acquired a write lock
+		doc.PageRank = score
+		if err := i.idx.Index(key, makeBleveDoc(doc)); err != nil {
+			return xerrors.Errorf("update score: %w", err)
+		}
+	} else {
+		//if document not found, don't index it but still store it
+		doc := &index.Document{LinkID: linkID, PageRank: score}
+		i.docs[key] = doc
+	}
 	return nil
+}
+
+func (i *InMemoryBleveIndexer) findByID(linkID string) (*index.Document, error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	if doc, found := i.docs[linkID]; found {
+		return copyDoc(doc), nil
+	}
+	return nil, xerrors.Errorf("find by ID: %w", index.ErrNotFound)
 }
 
 func copyDoc(d *index.Document) *index.Document {
