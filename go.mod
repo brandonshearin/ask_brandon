@@ -3,6 +3,8 @@ module github.com/brandonshearin/ask_brandon
 go 1.13
 
 require (
+	github.com/Azure/azure-amqp-common-go/v2 v2.1.1
+	github.com/blevesearch/bleve v1.0.7
 	github.com/eapache/go-resiliency v1.2.0 // indirect
 	github.com/gofrs/uuid v3.2.0+incompatible // indirect
 	github.com/google/uuid v1.1.1
