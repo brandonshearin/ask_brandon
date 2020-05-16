@@ -1,6 +1,7 @@
 package indextest
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/brandonshearin/ask_brandon/textindexer/index"
@@ -75,8 +76,8 @@ func (s *SuiteBase) TestFindByID(c *gc.C) {
 	c.Assert(xerrors.Is(err, index.ErrNotFound), gc.Equals, true)
 }
 
-//TestUpdateScore verifies that a document's pagerank is changed correctly
-func (s *SuiteBase) TestUpdateScore(c *gc.C) {
+//TestUpdateScore1 verifies that a document's pagerank is changed correctly
+func (s *SuiteBase) TestUpdateScore1(c *gc.C) {
 	doc := &index.Document{
 		LinkID:   uuid.New(),
 		PageRank: 1,
@@ -104,4 +105,135 @@ func (s *SuiteBase) TestUpdateScoreUnknownDocument(c *gc.C) {
 	c.Assert(found.Content, gc.Equals, "")
 	c.Assert(found.PageRank, gc.Equals, float64(10))
 
+}
+
+func (s *SuiteBase) iterateDocs(c *gc.C, it index.Iterator) []uuid.UUID {
+	var seen []uuid.UUID
+	for it.Next() {
+		seen = append(seen, it.Document().LinkID)
+	}
+	c.Assert(it.Error(), gc.IsNil)
+	c.Assert(it.Close(), gc.IsNil)
+	return seen
+}
+
+func (s *SuiteBase) reverse(collection []uuid.UUID) []uuid.UUID {
+	for i, j := 0, len(collection)-1; i < j; i, j = i+1, j-1 {
+		collection[i], collection[j] = collection[j], collection[i]
+	}
+	return collection
+}
+
+//TestUpdateScore2 verifies that scores are updated by iterating over a bleve search result
+func (s *SuiteBase) TestUpdateScore2(c *gc.C) {
+	var (
+		numDocs     = 100
+		expectedIDs []uuid.UUID
+	)
+
+	for i := 0; i < numDocs; i++ {
+		id := uuid.New()
+		expectedIDs = append(expectedIDs, id)
+		doc := &index.Document{
+			LinkID:  id,
+			Title:   fmt.Sprintf("doc with ID %s", id.String()),
+			Content: fmt.Sprintf("this is a test document"),
+		}
+		//index new document
+		err := s.idx.Index(doc)
+		c.Assert(err, gc.IsNil)
+
+		//update the score of the new document
+		err = s.idx.UpdateScore(id, float64(numDocs-i))
+		c.Assert(err, gc.IsNil)
+	}
+	it, err := s.idx.Search(index.Query{
+		Type:       index.QueryTypeMatch,
+		Expression: "test",
+	})
+	c.Assert(err, gc.IsNil)
+	c.Assert(s.iterateDocs(c, it), gc.DeepEquals, expectedIDs)
+
+	// Update the pagerank scores so that results are sorted in the
+	// reverse order.
+	for i := 0; i < numDocs; i++ {
+		err = s.idx.UpdateScore(expectedIDs[i], float64(i))
+		c.Assert(err, gc.IsNil, gc.Commentf(expectedIDs[i].String()))
+	}
+
+	it, err = s.idx.Search(index.Query{
+		Type:       index.QueryTypeMatch,
+		Expression: "test",
+	})
+	c.Assert(err, gc.IsNil)
+	c.Assert(s.iterateDocs(c, it), gc.DeepEquals, s.reverse(expectedIDs))
+}
+
+//TestPhraseSearch verifies the document search logic when searching for exact phrases
+func (s *SuiteBase) TestPhraseSearch(c *gc.C) {
+	var (
+		numDocs     = 100
+		expectedIDs []uuid.UUID
+	)
+	for i := 0; i < numDocs; i++ {
+		id := uuid.New()
+		doc := &index.Document{
+			LinkID:  id,
+			Title:   fmt.Sprintf("Doc with id %s", id.String()),
+			Content: "One Two Three",
+		}
+
+		if i%5 == 0 {
+			doc.Content = "Three Two One"
+			expectedIDs = append(expectedIDs, id)
+		}
+
+		err := s.idx.Index(doc)
+		c.Assert(err, gc.IsNil)
+
+		err = s.idx.UpdateScore(id, float64(numDocs-i))
+	}
+	//construct a query for exact phrases
+	it, err := s.idx.Search(index.Query{
+		Type:       index.QueryTypePhrase,
+		Expression: "three two one",
+	})
+	c.Assert(err, gc.IsNil)
+	c.Assert(s.iterateDocs(c, it), gc.DeepEquals, expectedIDs)
+}
+
+//TestMatchSearch verifies the document search logic when searching for keyword matches
+func (s *SuiteBase) TestMatchSearch(c *gc.C) {
+	var (
+		numDocs     = 100
+		expectedIDs []uuid.UUID
+	)
+
+	for i := 0; i < numDocs; i++ {
+		id := uuid.New()
+		doc := &index.Document{
+			LinkID:  id,
+			Title:   fmt.Sprintf("Document with id %s", id.String()),
+			Content: "this is the text of a document",
+		}
+
+		if i%5 == 0 {
+			doc.Content = "this content is interesting"
+			expectedIDs = append(expectedIDs, id)
+		}
+
+		err := s.idx.Index(doc)
+		c.Assert(err, gc.IsNil)
+		//we need to articially invert the score (numDocs - i) because
+		//when we need the expected IDs to be in descending order to match
+		//the iterator returned by calls to Search()
+		err = s.idx.UpdateScore(id, float64(numDocs-i))
+	}
+
+	it, err := s.idx.Search(index.Query{
+		Type:       index.QueryTypeMatch,
+		Expression: "interesting content",
+	})
+	c.Assert(err, gc.IsNil)
+	c.Assert(s.iterateDocs(c, it), gc.DeepEquals, expectedIDs)
 }

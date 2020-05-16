@@ -42,7 +42,7 @@ type Query struct {
 	*/
 	Expression string
 	// The number of serach results to skip
-	Offset uint64
+	Offset int
 }
 
 // QueryType describes the types of queries supported by the indexer implementations

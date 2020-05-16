@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/blevesearch/bleve"
+	"github.com/blevesearch/bleve/search/query"
 	"github.com/brandonshearin/ask_brandon/textindexer/index"
 	"github.com/google/uuid"
 	"golang.org/x/xerrors"
@@ -86,8 +87,28 @@ func (i *InMemoryBleveIndexer) FindByID(linkID uuid.UUID) (*index.Document, erro
 	return i.findByID(linkID.String())
 }
 
-func (i *InMemoryBleveIndexer) Search(query index.Query) (index.Iterator, error) {
-	return nil, nil
+//Search is called by clients of the text indexer to submit queries
+func (i *InMemoryBleveIndexer) Search(q index.Query) (index.Iterator, error) {
+	//Determine what type of query the caller asked us to perform,
+	//invoking the appropriate bleve helper
+	var bq query.Query
+	switch q.Type {
+	case index.QueryTypePhrase:
+		bq = bleve.NewMatchPhraseQuery(q.Expression)
+	case index.QueryTypeMatch:
+		bq = bleve.NewMatchQuery(q.Expression)
+	}
+
+	searchReq := bleve.NewSearchRequest(bq)
+	searchReq.SortBy([]string{"-PageRank", "-_score"})
+	searchReq.Size = 10
+	searchReq.From = q.Offset
+	rs, err := i.idx.Search(searchReq)
+	if err != nil {
+		return nil, xerrors.Errorf("search: %w", err)
+	}
+	//if the search returns a result, present an iterator to the caller for them to consume the matched documents
+	return &bleveIterator{idx: i, searchReq: searchReq, rs: rs, cumIdx: uint64(q.Offset)}, nil
 }
 
 /*
