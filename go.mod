@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	github.com/Azure/azure-amqp-common-go/v2 v2.1.1 // indirect
-	github.com/Azure/azure-pipeline-go v0.2.2
+	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
 	github.com/PacktPublishing/Hands-On-Software-Engineering-with-Golang v0.0.0-20200129071455-21ff3db987da
 	github.com/blevesearch/bleve v1.0.7
 	github.com/cznic/b v0.0.0-20181122101859-a26611c4d92d // indirect
@@ -24,6 +24,7 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
 	github.com/sqs/goreturns v0.0.0-20181028201513-538ac6014518 // indirect
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c // indirect
+	golang.org/x/text v0.3.2
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f
 )
